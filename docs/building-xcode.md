@@ -323,5 +323,3 @@
 Затем, откройте XCode, откройте ***BuildPath*/tdesktop/out/Telegram.xcodeproj** и собирайте для конфигурации Debug / Release.
 
 [api_credentials]: api_credentials.md
-
-PS: Якоря почему-то не работают. Или я (@ilyakrasnovv) накосячил, или гитхаб не уважает русский.
