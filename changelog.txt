@@ -1,3 +1,14 @@
+2.5.3 beta (30.12.20)
+
+- Allow using mouse buttons in Push-to-Talk shortcut.
+- Fix blurred thumbnails in Shared Links section.
+
+2.5.2 beta (25.12.20)
+
+- Fix possible crash in video calls.
+- Fix possible crash in connecting to voice chats.
+- Use different audio module code on Windows in calls.
+
 2.5.1 (23.12.20)
 
 - Fix crash in voice calls.
