@@ -62,7 +62,7 @@ std::map<int, const char*> BetaLogs() {
 		"- Fix sticker pack opening.\n"
 
 		"- Fix group status display.\n"
-		
+
 		"- Fix group members display.\n"
 	},
 	{
@@ -74,6 +74,20 @@ std::map<int, const char*> BetaLogs() {
 		"- Fix 'Open With' menu position in macOS.\n"
 
 		"- Fix freeze on secondary screen disconnect.\n"
+	},
+	{
+		2005002,
+		"- Fix possible crash in video calls.\n"
+
+		"- Fix possible crash in connecting to voice chats.\n"
+
+		"- Use different audio module code on Windows in calls.\n"
+	},
+	{
+		2005003,
+		"- Allow using mouse buttons in Push-to-Talk shortcut.\n"
+
+		"- Fix blurred thumbnails in Shared Links section.\n"
 	},
 	};
 };

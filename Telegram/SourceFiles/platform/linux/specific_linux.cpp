@@ -42,7 +42,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #endif // !DESKTOP_APP_DISABLE_DBUS_INTEGRATION
 
 #include <xcb/xcb.h>
-#include <xcb/screensaver.h>
 
 #include <glib.h>
 
@@ -452,25 +451,6 @@ bool ShowXCBWindowMenu(QWindow *window) {
 	return true;
 }
 
-bool XCBFrameExtentsSupported() {
-	const auto connection = base::Platform::XCB::GetConnectionFromQt();
-	if (!connection) {
-		return false;
-	}
-
-	const auto frameExtentsAtom = base::Platform::XCB::GetAtom(
-		connection,
-		kXCBFrameExtentsAtomName.utf16());
-
-	if (!frameExtentsAtom.has_value()) {
-		return false;
-	}
-
-	return ranges::contains(
-		base::Platform::XCB::GetWMSupported(connection),
-		*frameExtentsAtom);
-}
-
 bool SetXCBFrameExtents(QWindow *window, const QMargins &extents) {
 	const auto connection = base::Platform::XCB::GetConnectionFromQt();
 	if (!connection) {
@@ -525,25 +505,6 @@ bool UnsetXCBFrameExtents(QWindow *window) {
 		*frameExtentsAtom);
 
 	return true;
-}
-
-bool XCBSkipTaskbarSupported() {
-	const auto connection = base::Platform::XCB::GetConnectionFromQt();
-	if (!connection) {
-		return false;
-	}
-
-	const auto skipTaskbarAtom = base::Platform::XCB::GetAtom(
-		connection,
-		"_NET_WM_STATE_SKIP_TASKBAR");
-
-	if (!skipTaskbarAtom.has_value()) {
-		return false;
-	}
-
-	return ranges::contains(
-		base::Platform::XCB::GetWMSupported(connection),
-		*skipTaskbarAtom);
 }
 
 Window::Control GtkKeywordToWindowControl(const QString &keyword) {
@@ -805,7 +766,8 @@ bool TrayIconSupported() {
 }
 
 bool SkipTaskbarSupported() {
-	return !IsWayland() && XCBSkipTaskbarSupported();
+	return !IsWayland()
+		&& base::Platform::XCB::IsSupportedByWM("_NET_WM_STATE_SKIP_TASKBAR");
 }
 
 bool StartSystemMove(QWindow *window) {
@@ -849,11 +811,8 @@ bool UnsetWindowExtents(QWindow *window) {
 }
 
 bool WindowsNeedShadow() {
-	if (!IsWayland() && XCBFrameExtentsSupported()) {
-		return true;
-	}
-
-	return false;
+	return !IsWayland()
+		&& base::Platform::XCB::IsSupportedByWM(kXCBFrameExtentsAtomName.utf16());
 }
 
 Window::ControlsLayout WindowControlsLayout() {

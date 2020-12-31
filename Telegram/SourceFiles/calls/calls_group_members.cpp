@@ -243,6 +243,9 @@ private:
 	void prepareRows(not_null<Data::GroupCall*> real);
 	//void repaintByTimer();
 
+	[[nodiscard]] base::unique_qptr<Ui::PopupMenu> createRowContextMenu(
+		QWidget *parent,
+		not_null<PeerListRow*> row);
 	void setupListChangeViewers(not_null<GroupCall*> call);
 	void subscribeToChanges(not_null<Data::GroupCall*> real);
 	void updateRow(
@@ -270,6 +273,8 @@ private:
 	rpl::event_stream<MuteRequest> _toggleMuteRequests;
 	rpl::event_stream<not_null<UserData*>> _kickMemberRequests;
 	rpl::variable<int> _fullCount = 1;
+	rpl::variable<int> _fullCountMin = 0;
+	rpl::variable<int> _fullCountMax = std::numeric_limits<int>::max();
 
 	not_null<QWidget*> _menuParent;
 	base::unique_qptr<Ui::PopupMenu> _menu;
@@ -638,10 +643,7 @@ MembersController::MembersController(
 }
 
 MembersController::~MembersController() {
-	if (_menu) {
-		_menu->setDestroyedCallback(nullptr);
-		_menu = nullptr;
-	}
+	base::take(_menu);
 }
 
 void MembersController::setupListChangeViewers(not_null<GroupCall*> call) {
@@ -682,9 +684,12 @@ void MembersController::subscribeToChanges(not_null<Data::GroupCall*> real) {
 	_realCallRawValue = real;
 	_realId = real->id();
 
-	_fullCount = real->fullCountValue(
-	) | rpl::map([](int value) {
-		return std::max(value, 1);
+	_fullCount = rpl::combine(
+		real->fullCountValue(),
+		_fullCountMin.value(),
+		_fullCountMax.value()
+	) | rpl::map([](int value, int min, int max) {
+		return std::max(std::clamp(value, min, max), 1);
 	});
 
 	real->participantsSliceAdded(
@@ -741,18 +746,44 @@ void MembersController::appendInvitedUsers() {
 void MembersController::updateRow(
 		const std::optional<Data::GroupCall::Participant> &was,
 		const Data::GroupCall::Participant &now) {
+	auto countChange = 0;
 	if (const auto row = findRow(now.user)) {
 		if (now.speaking && (!was || !was->speaking)) {
 			checkSpeakingRowPosition(row);
+		}
+		if (row->state() == Row::State::Invited) {
+			countChange = 1;
 		}
 		updateRow(row, &now);
 	} else if (auto row = createRow(now)) {
 		if (row->speaking()) {
 			delegate()->peerListPrependRow(std::move(row));
 		} else {
+			static constexpr auto kInvited = Row::State::Invited;
+			const auto reorder = [&] {
+				const auto count = delegate()->peerListFullRowsCount();
+				if (!count) {
+					return false;
+				}
+				const auto row = delegate()->peerListRowAt(count - 1).get();
+				return (static_cast<Row*>(row)->state() == kInvited);
+			}();
 			delegate()->peerListAppendRow(std::move(row));
+			if (reorder) {
+				delegate()->peerListPartitionRows([](const PeerListRow &row) {
+					return static_cast<const Row&>(row).state() != kInvited;
+				});
+			}
 		}
 		delegate()->peerListRefreshRows();
+		countChange = 1;
+	}
+	if (countChange) {
+		const auto fullCountMin = _fullCountMin.current() + countChange;
+		if (_fullCountMax.current() < fullCountMin) {
+			_fullCountMax = fullCountMin;
+		}
+		_fullCountMin = fullCountMin;
 	}
 }
 
@@ -865,10 +896,11 @@ void MembersController::prepare() {
 	setSearchNoResultsText(tr::lng_blocked_list_not_found(tr::now));
 
 	const auto call = _call.get();
-	if (const auto real = _peer->groupCall();
-		real && call && real->id() == call->id()) {
+	if (const auto real = _peer->groupCall()
+		; real && call && real->id() == call->id()) {
 		prepareRows(real);
 	} else if (auto row = createSelfRow()) {
+		_fullCountMin = (row->state() == Row::State::Invited) ? 0 : 1;
 		delegate()->peerListAppendRow(std::move(row));
 		delegate()->peerListRefreshRows();
 	}
@@ -884,6 +916,7 @@ void MembersController::prepareRows(not_null<Data::GroupCall*> real) {
 	auto foundSelf = false;
 	auto changed = false;
 	const auto &participants = real->participants();
+	auto fullCountMin = 0;
 	auto count = delegate()->peerListFullRowsCount();
 	for (auto i = 0; i != count;) {
 		auto row = delegate()->peerListRowAt(i);
@@ -898,6 +931,7 @@ void MembersController::prepareRows(not_null<Data::GroupCall*> real) {
 			not_null{ user },
 			&Data::GroupCall::Participant::user);
 		if (contains) {
+			++fullCountMin;
 			++i;
 		} else {
 			changed = true;
@@ -913,18 +947,29 @@ void MembersController::prepareRows(not_null<Data::GroupCall*> real) {
 			&Data::GroupCall::Participant::user);
 		auto row = (i != end(participants)) ? createRow(*i) : createSelfRow();
 		if (row) {
+			if (row->state() != Row::State::Invited) {
+				++fullCountMin;
+			}
 			changed = true;
 			delegate()->peerListAppendRow(std::move(row));
 		}
 	}
 	for (const auto &participant : participants) {
 		if (auto row = createRow(participant)) {
+			++fullCountMin;
 			changed = true;
 			delegate()->peerListAppendRow(std::move(row));
 		}
 	}
 	if (changed) {
 		delegate()->peerListRefreshRows();
+		if (_fullCountMax.current() < fullCountMin) {
+			_fullCountMax = fullCountMin;
+		}
+		_fullCountMin = fullCountMin;
+		if (real->participantsLoaded()) {
+			_fullCountMax = fullCountMin;
+		}
 	}
 }
 
@@ -1002,29 +1047,20 @@ auto MembersController::kickMemberRequests() const
 }
 
 void MembersController::rowClicked(not_null<PeerListRow*> row) {
-	if (_menu) {
-		_menu->setDestroyedCallback(nullptr);
-		_menu->deleteLater();
-		_menu = nullptr;
-	}
-	_menu = rowContextMenu(_menuParent, row);
-	if (const auto raw = _menu.get()) {
-		raw->setDestroyedCallback([=] {
-			if (_menu && _menu.get() != raw) {
-				return;
-			}
-			auto saved = base::take(_menu);
-			for (const auto peer : base::take(_menuCheckRowsAfterHidden)) {
-				if (const auto row = findRow(peer->asUser())) {
-					if (row->speaking()) {
-						checkSpeakingRowPosition(row);
-					}
+	delegate()->peerListShowRowMenu(row, [=](not_null<Ui::PopupMenu*> menu) {
+		if (!_menu || _menu.get() != menu) {
+			return;
+		}
+		auto saved = base::take(_menu);
+		for (const auto peer : base::take(_menuCheckRowsAfterHidden)) {
+			if (const auto row = findRow(peer->asUser())) {
+				if (row->speaking()) {
+					checkSpeakingRowPosition(row);
 				}
 			}
-			_menu = std::move(saved);
-		});
-		raw->popup(QCursor::pos());
-	}
+		}
+		_menu = std::move(saved);
+	});
 }
 
 void MembersController::rowActionClicked(
@@ -1033,6 +1069,23 @@ void MembersController::rowActionClicked(
 }
 
 base::unique_qptr<Ui::PopupMenu> MembersController::rowContextMenu(
+		QWidget *parent,
+		not_null<PeerListRow*> row) {
+	auto result = createRowContextMenu(parent, row);
+
+	if (result) {
+		// First clear _menu value, so that we don't check row positions yet.
+		base::take(_menu);
+
+		// Here unique_qptr is used like a shared pointer, where
+		// not the last destroyed pointer destroys the object, but the first.
+		_menu = base::unique_qptr<Ui::PopupMenu>(result.get());
+	}
+
+	return result;
+}
+
+base::unique_qptr<Ui::PopupMenu> MembersController::createRowContextMenu(
 		QWidget *parent,
 		not_null<PeerListRow*> row) {
 	Expects(row->peer()->isUser());
@@ -1125,7 +1178,9 @@ base::unique_qptr<Ui::PopupMenu> MembersController::rowContextMenu(
 		_kickMemberRequests.fire_copy(user);
 	});
 
-	if (_peer->canManageGroupCall() && (!admin || mute)) {
+	if ((muteState != Row::State::Invited)
+		&& _peer->canManageGroupCall()
+		&& (!admin || mute)) {
 		result->addAction(
 			(mute
 				? tr::lng_group_call_context_mute(tr::now)
