@@ -17,6 +17,11 @@ class UserData;
 class ChatData;
 class ChannelData;
 
+using ChatAdminRight = MTPDchatAdminRights::Flag;
+using ChatRestriction = MTPDchatBannedRights::Flag;
+using ChatAdminRights = MTPDchatAdminRights::Flags;
+using ChatRestrictions = MTPDchatBannedRights::Flags;
+
 namespace Ui {
 class EmptyUserpic;
 } // namespace Ui
@@ -30,22 +35,12 @@ namespace Data {
 
 class Session;
 class GroupCall;
+class CloudImageView;
 
 int PeerColorIndex(PeerId peerId);
 int PeerColorIndex(int32 bareId);
 style::color PeerUserpicColor(PeerId peerId);
 PeerId FakePeerIdForJustName(const QString &name);
-
-} // namespace Data
-
-using ChatAdminRight = MTPDchatAdminRights::Flag;
-using ChatRestriction = MTPDchatBannedRights::Flag;
-using ChatAdminRights = MTPDchatAdminRights::Flags;
-using ChatRestrictions = MTPDchatBannedRights::Flags;
-
-namespace Data {
-
-class CloudImageView;
 
 class RestrictionCheckResult {
 public:
@@ -99,6 +94,11 @@ struct UnavailableReason {
 		return !(*this == other);
 	}
 };
+
+[[nodiscard]] ChatRestrictions ChatBannedRightsFlags(
+	const MTPChatBannedRights &rights);
+[[nodiscard]] TimeId ChatBannedRightsUntilDate(
+	const MTPChatBannedRights &rights);
 
 } // namespace Data
 
@@ -161,6 +161,7 @@ public:
 	[[nodiscard]] bool isFake() const;
 	[[nodiscard]] bool isMegagroup() const;
 	[[nodiscard]] bool isBroadcast() const;
+	[[nodiscard]] bool isGigagroup() const;
 	[[nodiscard]] bool isRepliesChat() const;
 	[[nodiscard]] bool sharedMediaInfo() const {
 		return isSelf() || isRepliesChat();
@@ -386,7 +387,11 @@ public:
 	}
 	void setLoadedStatus(LoadedStatus status);
 
+	[[nodiscard]] TimeId messagesTTL() const;
+	void setMessagesTTL(TimeId period);
+
 	[[nodiscard]] Data::GroupCall *groupCall() const;
+	[[nodiscard]] PeerId groupCallDefaultJoinAs() const;
 
 	const PeerId id;
 	QString name;
@@ -429,6 +434,8 @@ private:
 	base::flat_set<QChar> _nameFirstLetters;
 
 	crl::time _lastFullUpdate = 0;
+
+	TimeId _ttlPeriod = 0;
 	bool _hasPinnedMessages = false;
 
 	Settings _settings = { kSettingsUnknown };

@@ -48,14 +48,18 @@ void ChatData::setPhoto(PhotoId photoId, const MTPChatPhoto &photo) {
 	});
 }
 
-auto ChatData::DefaultAdminRights() -> AdminRights {
+auto ChatData::defaultAdminRights(not_null<UserData*> user) -> AdminRights {
+	const auto isCreator = (creator == user->bareId())
+		|| (user->isSelf() && amCreator());
 	using Flag = AdminRight;
-	return Flag::f_change_info
+	return Flag::f_other
+		| Flag::f_change_info
 		| Flag::f_delete_messages
 		| Flag::f_ban_users
 		| Flag::f_invite_users
 		| Flag::f_pin_messages
-		| Flag::f_manage_call;
+		| Flag::f_manage_call
+		| (isCreator ? Flag::f_add_admins : Flag(0));
 }
 
 bool ChatData::canWrite() const {
@@ -79,6 +83,11 @@ bool ChatData::canEditUsername() const {
 
 bool ChatData::canEditPreHistoryHidden() const {
 	return amCreator();
+}
+
+bool ChatData::canDeleteMessages() const {
+	return amCreator()
+		|| (adminRights() & AdminRight::f_delete_messages);
 }
 
 bool ChatData::canAddMembers() const {
@@ -147,10 +156,11 @@ void ChatData::setAdminRights(const MTPChatAdminRights &rights) {
 }
 
 void ChatData::setDefaultRestrictions(const MTPChatBannedRights &rights) {
-	if (rights.c_chatBannedRights().vflags().v == defaultRestrictions()) {
+	const auto restrictionFlags = Data::ChatBannedRightsFlags(rights);
+	if (restrictionFlags == defaultRestrictions()) {
 		return;
 	}
-	_defaultRestrictions.set(rights.c_chatBannedRights().vflags().v);
+	_defaultRestrictions.set(restrictionFlags);
 	session().changes().peerUpdated(this, UpdateFlag::Rights);
 }
 
@@ -227,6 +237,14 @@ void ChatData::clearGroupCall() {
 	session().changes().peerUpdated(this, UpdateFlag::GroupCall);
 	removeFlags(MTPDchat::Flag::f_call_active
 		| MTPDchat::Flag::f_call_not_empty);
+}
+
+void ChatData::setGroupCallDefaultJoinAs(PeerId peerId) {
+	_callDefaultJoinAs = peerId;
+}
+
+PeerId ChatData::groupCallDefaultJoinAs() const {
+	return _callDefaultJoinAs;
 }
 
 namespace Data {
@@ -335,7 +353,7 @@ void ApplyChatUpdate(
 	}
 	if (user->isSelf()) {
 		chat->setAdminRights(MTP_chatAdminRights(mtpIsTrue(update.vis_admin())
-			? MTP_flags(ChatData::DefaultAdminRights())
+			? MTP_flags(chat->defaultAdminRights(user))
 			: MTP_flags(0)));
 	}
 	if (mtpIsTrue(update.vis_admin())) {
@@ -368,7 +386,13 @@ void ApplyChatUpdate(not_null<ChatData*> chat, const MTPDchatFull &update) {
 	} else {
 		chat->clearGroupCall();
 	}
+	if (const auto as = update.vgroupcall_default_join_as()) {
+		chat->setGroupCallDefaultJoinAs(peerFromMTP(*as));
+	} else {
+		chat->setGroupCallDefaultJoinAs(0);
+	}
 
+	chat->setMessagesTTL(update.vttl_period().value_or_empty());
 	if (const auto info = update.vbot_info()) {
 		for (const auto &item : info->v) {
 			item.match([&](const MTPDbotInfo &data) {
@@ -387,9 +411,9 @@ void ApplyChatUpdate(not_null<ChatData*> chat, const MTPDchatFull &update) {
 		chat->setUserpicPhoto(MTP_photoEmpty(MTP_long(0)));
 	}
 	if (const auto invite = update.vexported_invite()) {
-		chat->session().api().inviteLinks().setPermanent(chat, *invite);
+		chat->session().api().inviteLinks().setMyPermanent(chat, *invite);
 	} else {
-		chat->session().api().inviteLinks().clearPermanent(chat);
+		chat->session().api().inviteLinks().clearMyPermanent(chat);
 	}
 	if (const auto pinned = update.vpinned_msg_id()) {
 		SetTopPinnedMessageId(chat, pinned->v);
@@ -457,7 +481,7 @@ void ApplyChatUpdate(
 				chat->admins.emplace(user);
 				if (user->isSelf()) {
 					chat->setAdminRights(MTP_chatAdminRights(
-						MTP_flags(ChatData::DefaultAdminRights())));
+						MTP_flags(chat->defaultAdminRights(user))));
 				}
 			}, [](const MTPDchatParticipant &) {
 			});

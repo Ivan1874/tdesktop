@@ -69,6 +69,7 @@ namespace HistoryView {
 
 namespace Controls {
 class VoiceRecordBar;
+class TTLButton;
 } // namespace Controls
 
 class FieldHeader;
@@ -172,6 +173,8 @@ public:
 	void applyDraft(
 		FieldHistoryAction fieldHistoryAction = FieldHistoryAction::Clear);
 
+	Fn<void()> restoreTextCallback(const QString &insertTextOnCancel) const;
+
 private:
 	enum class TextUpdateEvent {
 		SaveDraft = (1 << 0),
@@ -199,6 +202,7 @@ private:
 	void initKeyHandler();
 	void updateSubmitSettings();
 	void updateSendButtonType();
+	void updateMessagesTTLShown();
 	void updateHeight();
 	void updateWrappingVisibility();
 	void updateControlsVisibility();
@@ -246,7 +250,7 @@ private:
 	void applyInlineBotQuery(UserData *bot, const QString &query);
 
 	void inlineBotResolveDone(const MTPcontacts_ResolvedPeer &result);
-	void inlineBotResolveFail(const RPCError &error, const QString &username);
+	void inlineBotResolveFail(const MTP::Error &error, const QString &username);
 
 	[[nodiscard]] Data::DraftKey draftKey(
 		DraftType type = DraftType::Normal) const;
@@ -284,6 +288,7 @@ private:
 	const not_null<Ui::InputField*> _field;
 	const not_null<Ui::IconButton*> _botCommandStart;
 	std::unique_ptr<Ui::SilentToggle> _silent;
+	std::unique_ptr<Controls::TTLButton> _ttlInfo;
 
 	std::unique_ptr<InlineBots::Layout::Widget> _inlineResults;
 	std::unique_ptr<ChatHelpers::TabbedPanel> _tabbedPanel;

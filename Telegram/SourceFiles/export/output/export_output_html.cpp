@@ -220,9 +220,9 @@ QByteArray JoinList(
 QByteArray FormatText(
 		const std::vector<Data::TextPart> &data,
 		const QString &internalLinksDomain) {
-	return JoinList(QByteArray(), ranges::view::all(
+	return JoinList(QByteArray(), ranges::views::all(
 		data
-	) | ranges::view::transform([&](const Data::TextPart &part) {
+	) | ranges::views::transform([&](const Data::TextPart &part) {
 		const auto text = SerializeString(part.text);
 		using Type = Data::TextPart::Type;
 		switch (part.type) {
@@ -804,7 +804,7 @@ QByteArray HtmlWriter::Wrap::pushGenericListEntry(
 		result.append(SerializeString(subname));
 		result.append(popTag());
 	}
-	for (const auto detail : details) {
+	for (const auto &detail : details) {
 		result.append(pushDiv("details_entry details"));
 		result.append(SerializeString(detail));
 		result.append(popTag());
@@ -966,7 +966,7 @@ auto HtmlWriter::Wrap::pushMessage(
 				+ SerializeString(data.title)
 				+ "&raquo;")
 			: (serviceFrom
-				+ " fchanged group title to &laquo;"
+				+ " changed group title to &laquo;"
 				+ SerializeString(data.title)
 				+ "&raquo;");
 	}, [&](const ActionChatEditPhoto &data) {

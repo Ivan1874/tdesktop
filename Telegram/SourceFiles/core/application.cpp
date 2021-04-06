@@ -21,10 +21,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/local_url_handlers.h"
 #include "core/launcher.h"
 #include "core/ui_integration.h"
-#include "core/core_settings.h"
 #include "chat_helpers/emoji_keywords.h"
 #include "chat_helpers/stickers_emoji_image_loader.h"
-#include "base/platform/base_platform_info.h"
 #include "base/platform/base_platform_last_input.h"
 #include "platform/platform_specific.h"
 #include "mainwindow.h"
@@ -138,20 +136,13 @@ Application::Application(not_null<Launcher*> launcher)
 			UpdateChecker().setMtproto(session);
 		}
 	}, _lifetime);
-
-	_domain->activeValue(
-	) | rpl::filter(rpl::mappers::_1 != nullptr
-	) | rpl::take(1) | rpl::start_with_next([=] {
-		if (_window) {
-			// Global::DesktopNotify is used in updateTrayMenu.
-			// This should be called when user settings are read.
-			// Right now after they are read the startMtp() is called.
-			_window->widget()->updateTrayMenu();
-		}
-	}, _lifetime);
 }
 
 Application::~Application() {
+	if (_saveSettingsTimer && _saveSettingsTimer->isActive()) {
+		Local::writeSettings();
+	}
+
 	// Depend on activeWindow() for now :(
 	Shortcuts::Finish();
 
@@ -207,8 +198,6 @@ void Application::run() {
 		App::quit();
 		return;
 	}
-
-	Core::App().settings().setWindowControlsLayout(Platform::WindowControlsLayout());
 
 	_translator = std::make_unique<Lang::Translator>();
 	QCoreApplication::instance()->installTranslator(_translator.get());
@@ -465,7 +454,9 @@ bool Application::eventFilter(QObject *object, QEvent *e) {
 }
 
 void Application::saveSettingsDelayed(crl::time delay) {
-	_saveSettingsTimer.callOnce(delay);
+	if (_saveSettingsTimer) {
+		_saveSettingsTimer->callOnce(delay);
+	}
 }
 
 void Application::saveSettings() {
@@ -533,7 +524,7 @@ void Application::badMtprotoConfigurationError() {
 
 void Application::startLocalStorage() {
 	Local::start();
-	_saveSettingsTimer.setCallback([=] { saveSettings(); });
+	_saveSettingsTimer.emplace([=] { saveSettings(); });
 }
 
 void Application::startEmojiImageLoader() {
@@ -985,13 +976,6 @@ void Application::notifyFileDialogShown(bool shown) {
 	}
 }
 
-QWidget *Application::getModalParent() {
-	return (Platform::IsWayland() && activeWindow())
-		? activeWindow()->widget().get()
-		: nullptr;
-}
-
-
 void Application::checkMediaViewActivation() {
 	if (_mediaView && !_mediaView->isHidden()) {
 		_mediaView->activateWindow();
@@ -1030,7 +1014,7 @@ void Application::unregisterLeaveSubscription(not_null<QWidget*> widget) {
 #ifdef Q_OS_MAC
 	_leaveSubscriptions = std::move(
 		_leaveSubscriptions
-	) | ranges::action::remove_if([&](const LeaveSubscription &subscription) {
+	) | ranges::actions::remove_if([&](const LeaveSubscription &subscription) {
 		auto pointer = subscription.pointer.data();
 		return !pointer || (pointer == widget);
 	});

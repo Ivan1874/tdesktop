@@ -54,7 +54,7 @@ public:
 
 	void showSettings();
 
-	void setInnerFocus();
+	void setInnerFocus() override;
 
 	MainWidget *sessionContent() const;
 
@@ -79,7 +79,7 @@ public:
 	}
 
 	void showMainMenu();
-	void updateTrayMenu(bool force = false) override;
+	void updateTrayMenu() override;
 	void fixOrder() override;
 
 	void showSpecialLayer(

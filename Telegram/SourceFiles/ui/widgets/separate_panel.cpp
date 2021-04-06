@@ -8,7 +8,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/separate_panel.h"
 
 #include "window/main_window.h"
-#include "platform/platform_specific.h"
 #include "ui/widgets/shadow.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
@@ -32,8 +31,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Ui {
 
 SeparatePanel::SeparatePanel()
-: RpWidget(Core::App().getModalParent())
-, _close(this, st::separatePanelClose)
+: _close(this, st::separatePanelClose)
 , _back(this, object_ptr<Ui::IconButton>(this, st::separatePanelBack))
 , _body(this) {
 	setMouseTracking(true);
@@ -554,14 +552,9 @@ void SeparatePanel::mousePressEvent(QMouseEvent *e) {
 	if (e->button() == Qt::LeftButton) {
 		if (dragArea.contains(e->pos())) {
 			const auto dragViaSystem = [&] {
-				if (::Platform::StartSystemMove(windowHandle())) {
-					return true;
-				}
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0) || defined DESKTOP_APP_QT_PATCHED
 				if (windowHandle()->startSystemMove()) {
 					return true;
 				}
-#endif // Qt >= 5.15 || DESKTOP_APP_QT_PATCHED
 				return false;
 			}();
 			if (!dragViaSystem) {

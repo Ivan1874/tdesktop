@@ -64,12 +64,16 @@ protected:
 	int contentHeight() const override;
 
 private:
+	float64 computeSpeed(float64 value) const;
+	QString speedString(float64 value) const;
+
 	QRect _itemRect;
 	QRect _textRect;
 
 	const style::MediaSlider &_sliderSt;
 	const base::unique_qptr<Ui::MediaSlider> _slider;
 	const not_null<QAction*> _dummyAction;
+	const int _lineCount;
 	const int _height;
 
 	rpl::event_stream<float64> _changeSpeedRequests;
@@ -86,8 +90,10 @@ MenuSpeedItem::MenuSpeedItem(
 	this,
 	_sliderSt))
 , _dummyAction(new QAction(parent))
+, _lineCount(std::ceil(st.itemStyle.font->width(speedString(0.9))
+	/ float(st.widthMax)))
 , _height(st.itemPadding.top() * 2
-	+ st.itemStyle.font->height
+	+ st.itemStyle.font->height * _lineCount
 	+ _sliderSt.seekSize.height()
 	+ st.itemPadding.bottom() * 2) {
 
@@ -95,22 +101,16 @@ MenuSpeedItem::MenuSpeedItem(
 	enableMouseSelecting();
 	enableMouseSelecting(_slider.get());
 
-	const auto computeSpeed = [=](float64 value) {
-		return anim::interpolate(kMinSpeed, kMaxSpeed, value) / 100.;
-	};
-	const auto speedString = [=](float64 value) {
-		return u"%1: %2x"_q
-			.arg(tr::lng_mediaview_playback_speed(tr::now))
-			.arg(computeSpeed(value));
-	};
-
 	_slider->setAlwaysDisplayMarker(true);
 	_slider->setValue((std::round(startSpeed * 100.) - kMinSpeed)
 		/ (kMaxSpeed - kMinSpeed));
 
-	_slider->addDivider(
-		kSpeedStickedValues[1].first,
-		st::speedSliderDividerSize);
+	for (const auto &sticked : kSpeedStickedValues) {
+		_slider->addDivider(sticked.first, st::speedSliderDividerSize);
+	}
+	//_slider->addDivider(
+	//	kSpeedStickedValues[1].first,
+	//	st::speedSliderDividerSize);
 
 	{
 		const auto goodWidth = st.itemPadding.left()
@@ -125,8 +125,13 @@ MenuSpeedItem::MenuSpeedItem(
 		_itemRect = geometry - st.itemPadding;
 
 		const auto height = _itemRect.height();
+		const auto penWidth = QPen(st.itemBgOver).width();
 		_textRect = _itemRect
-			- style::margins(0, 0, 0, height - st.itemStyle.font->height);
+			- style::margins(
+				-penWidth,
+				0,
+				-penWidth,
+				height - st.itemStyle.font->height * _lineCount);
 
 		const auto sliderGeometry = _itemRect
 			- style::margins(0, height - _sliderSt.seekSize.height(), 0, 0);
@@ -142,6 +147,7 @@ MenuSpeedItem::MenuSpeedItem(
 
 		const auto value = _slider->value();
 
+		p.setPen(selected ? st.itemFgOver : st.itemFg);
 		p.setFont(st.itemStyle.font);
 		p.drawText(_textRect, speedString(value), style::al_left);
 	}, lifetime());
@@ -163,6 +169,17 @@ MenuSpeedItem::MenuSpeedItem(
 		}
 		return value;
 	});
+}
+
+float64 MenuSpeedItem::computeSpeed(float64 value) const {
+	return anim::interpolate(kMinSpeed, kMaxSpeed, value) / 100.;
+}
+
+QString MenuSpeedItem::speedString(float64 value) const {
+	return tr::lng_mediaview_playback_speed(
+		tr::now,
+		lt_speed,
+		QString::number(computeSpeed(value), 'f', 2) + 'x');
 }
 
 not_null<QAction*> MenuSpeedItem::action() const {

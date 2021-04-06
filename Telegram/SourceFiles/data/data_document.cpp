@@ -48,6 +48,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "app.h"
 
 #include <QtCore/QBuffer>
+#include <QtCore/QMimeType>
+#include <QtCore/QMimeDatabase>
 
 namespace {
 
@@ -211,7 +213,7 @@ QString FileNameUnsafe(
 	}
 	QString nameBase = path + nameStart;
 	name = nameBase + extension;
-	for (int i = 0; QFileInfo(name).exists(); ++i) {
+	for (int i = 0; QFileInfo::exists(name); ++i) {
 		name = nameBase + QString(" (%1)").arg(i + 2) + extension;
 	}
 
@@ -1647,7 +1649,7 @@ void DocumentData::collectLocalData(not_null<DocumentData*> local) {
 namespace Data {
 
 QString FileExtension(const QString &filepath) {
-	const auto reversed = ranges::view::reverse(filepath);
+	const auto reversed = ranges::views::reverse(filepath);
 	const auto last = ranges::find_first_of(reversed, ".\\/");
 	if (last == reversed.end() || *last != '.') {
 		return QString();
@@ -1714,10 +1716,19 @@ bool IsIpRevealingName(const QString &filepath) {
 		const auto list = joined.split(' ');
 		return base::flat_set<QString>(list.begin(), list.end());
 	}();
+	static const auto kMimeTypes = [] {
+		const auto joined = u"text/html image/svg+xml"_q;
+		const auto list = joined.split(' ');
+		return base::flat_set<QString>(list.begin(), list.end());
+	}();
 
 	return ranges::binary_search(
 		kExtensions,
-		FileExtension(filepath).toLower());
+		FileExtension(filepath).toLower()
+	) || ranges::binary_search(
+		kMimeTypes,
+		QMimeDatabase().mimeTypeForFile(QFileInfo(filepath)).name()
+	);
 }
 
 base::binary_guard ReadImageAsync(

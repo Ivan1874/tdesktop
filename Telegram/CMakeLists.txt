@@ -73,7 +73,7 @@ PRIVATE
 if (LINUX)
     target_link_libraries(Telegram
     PRIVATE
-        desktop-app::external_xcb
+        desktop-app::external_glibmm
         desktop-app::external_glib
     )
 
@@ -85,6 +85,13 @@ if (LINUX)
         )
     endif()
 
+    if (NOT DESKTOP_APP_DISABLE_X11_INTEGRATION)
+        target_link_libraries(Telegram
+        PRIVATE
+            desktop-app::external_xcb
+        )
+    endif()
+
     if (NOT DESKTOP_APP_DISABLE_WAYLAND_INTEGRATION)
         target_link_libraries(Telegram
         PRIVATE
@@ -92,34 +99,24 @@ if (LINUX)
         )
     endif()
 
-    if (DESKTOP_APP_USE_PACKAGED
-        AND NOT DESKTOP_APP_DISABLE_WAYLAND_INTEGRATION
-        AND Qt5WaylandClient_VERSION VERSION_LESS 5.13.0)
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
-
-        target_include_directories(Telegram
-        PRIVATE
-            ${WAYLAND_CLIENT_INCLUDE_DIRS}
-        )
-    endif()
-
-    if (NOT TDESKTOP_DISABLE_GTK_INTEGRATION)
+    if (NOT DESKTOP_APP_DISABLE_GTK_INTEGRATION)
         find_package(PkgConfig REQUIRED)
 
         if (DESKTOP_APP_USE_PACKAGED AND NOT DESKTOP_APP_USE_PACKAGED_LAZY)
             pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
-            pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+            target_link_libraries(Telegram PRIVATE PkgConfig::GTK3)
 
-            target_link_libraries(Telegram
-            PRIVATE
-                PkgConfig::GTK3
-                PkgConfig::X11
-            )
+            if (NOT DESKTOP_APP_DISABLE_X11_INTEGRATION)
+                pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+                target_link_libraries(Telegram PRIVATE PkgConfig::X11)
+            endif()
         else()
             pkg_search_module(GTK REQUIRED gtk+-3.0 gtk+-2.0)
             target_include_directories(Telegram PRIVATE ${GTK_INCLUDE_DIRS})
-            target_link_libraries(Telegram PRIVATE X11)
+
+            if (NOT DESKTOP_APP_DISABLE_X11_INTEGRATION)
+                target_link_libraries(Telegram PRIVATE X11)
+            endif()
         endif()
     endif()
 endif()
@@ -244,8 +241,6 @@ PRIVATE
     boxes/photo_crop_box.h
     boxes/rate_call_box.cpp
     boxes/rate_call_box.h
-    boxes/report_box.cpp
-    boxes/report_box.h
     boxes/self_destruction_box.cpp
     boxes/self_destruction_box.h
     boxes/send_files_box.cpp
@@ -268,11 +263,15 @@ PRIVATE
     calls/calls_box_controller.h
     calls/calls_call.cpp
     calls/calls_call.h
+    calls/calls_choose_join_as.cpp
+    calls/calls_choose_join_as.h
     calls/calls_group_call.cpp
     calls/calls_group_call.h
     calls/calls_group_common.h
     calls/calls_group_members.cpp
     calls/calls_group_members.h
+    calls/calls_group_menu.cpp
+    calls/calls_group_menu.h
     calls/calls_group_panel.cpp
     calls/calls_group_panel.h
     calls/calls_group_settings.cpp
@@ -394,8 +393,6 @@ PRIVATE
     data/data_drafts.h
     data/data_folder.cpp
     data/data_folder.h
-    # data/data_feed_messages.cpp
-    # data/data_feed_messages.h
     data/data_file_origin.cpp
     data/data_file_origin.h
     data/data_flags.h
@@ -496,11 +493,11 @@ PRIVATE
     history/admin_log/history_admin_log_item.h
     history/admin_log/history_admin_log_section.cpp
     history/admin_log/history_admin_log_section.h
-    # history/feed/history_feed_section.cpp
-    # history/feed/history_feed_section.h
     history/view/controls/compose_controls_common.h
     history/view/controls/history_view_compose_controls.cpp
     history/view/controls/history_view_compose_controls.h
+    history/view/controls/history_view_ttl_button.cpp
+    history/view/controls/history_view_ttl_button.h
     history/view/controls/history_view_voice_record_bar.cpp
     history/view/controls/history_view_voice_record_bar.h
     history/view/controls/history_view_voice_record_button.cpp
@@ -614,22 +611,10 @@ PRIVATE
     info/info_top_bar.h
     info/info_wrap_widget.cpp
     info/info_wrap_widget.h
-    # info/channels/info_channels_widget.cpp
-    # info/channels/info_channels_widget.h
     info/common_groups/info_common_groups_inner_widget.cpp
     info/common_groups/info_common_groups_inner_widget.h
     info/common_groups/info_common_groups_widget.cpp
     info/common_groups/info_common_groups_widget.h
-    # info/feed/info_feed_channels.cpp
-    # info/feed/info_feed_channels.h
-    # info/feed/info_feed_channels_controllers.cpp
-    # info/feed/info_feed_channels_controllers.h
-    # info/feed/info_feed_cover.cpp
-    # info/feed/info_feed_cover.h
-    # info/feed/info_feed_profile_inner_widget.cpp
-    # info/feed/info_feed_profile_inner_widget.h
-    # info/feed/info_feed_profile_widget.cpp
-    # info/feed/info_feed_profile_widget.h
     info/media/info_media_buttons.h
     info/media/info_media_empty_widget.cpp
     info/media/info_media_empty_widget.h
@@ -834,14 +819,18 @@ PRIVATE
     platform/linux/linux_gtk_integration_p.h
     platform/linux/linux_gtk_integration.cpp
     platform/linux/linux_gtk_integration.h
+    platform/linux/linux_gtk_open_with_dialog.cpp
+    platform/linux/linux_gtk_open_with_dialog.h
+    platform/linux/linux_mpris_support.cpp
+    platform/linux/linux_mpris_support.h
     platform/linux/linux_notification_service_watcher.cpp
     platform/linux/linux_notification_service_watcher.h
-    platform/linux/linux_open_with_dialog.cpp
-    platform/linux/linux_open_with_dialog.h
     platform/linux/linux_wayland_integration.cpp
     platform/linux/linux_wayland_integration.h
-    platform/linux/linux_xlib_helper.cpp
-    platform/linux/linux_xlib_helper.h
+    platform/linux/linux_xdp_file_dialog.cpp
+    platform/linux/linux_xdp_file_dialog.h
+    platform/linux/linux_xdp_open_with_dialog.cpp
+    platform/linux/linux_xdp_open_with_dialog.h
     platform/linux/file_utilities_linux.cpp
     platform/linux/file_utilities_linux.h
     platform/linux/launcher_linux.cpp
@@ -852,7 +841,6 @@ PRIVATE
     platform/linux/notifications_manager_linux.h
     platform/linux/specific_linux.cpp
     platform/linux/specific_linux.h
-    platform/linux/window_title_linux.cpp
     platform/linux/window_title_linux.h
     platform/mac/file_utilities_mac.mm
     platform/mac/file_utilities_mac.h
@@ -981,8 +969,6 @@ PRIVATE
     storage/storage_domain.h
     storage/storage_facade.cpp
     storage/storage_facade.h
-    # storage/storage_feed_messages.cpp
-    # storage/storage_feed_messages.h
     storage/storage_media_prepare.cpp
     storage/storage_media_prepare.h
     storage/storage_shared_media.cpp
@@ -1057,7 +1043,6 @@ PRIVATE
     window/window_connecting_widget.h
     window/window_controller.cpp
     window/window_controller.h
-    window/window_controls_layout.h
     window/window_filters_menu.cpp
     window/window_filters_menu.h
     window/window_history_hider.cpp
@@ -1126,12 +1111,18 @@ if (NOT LINUX)
     )
 endif()
 
-if (LINUX AND DESKTOP_APP_DISABLE_DBUS_INTEGRATION)
+if (DESKTOP_APP_DISABLE_DBUS_INTEGRATION)
     remove_target_sources(Telegram ${src_loc}
         platform/linux/linux_gsd_media_keys.cpp
         platform/linux/linux_gsd_media_keys.h
+        platform/linux/linux_mpris_support.cpp
+        platform/linux/linux_mpris_support.h
         platform/linux/linux_notification_service_watcher.cpp
         platform/linux/linux_notification_service_watcher.h
+        platform/linux/linux_xdp_file_dialog.cpp
+        platform/linux/linux_xdp_file_dialog.h
+        platform/linux/linux_xdp_open_with_dialog.cpp
+        platform/linux/linux_xdp_open_with_dialog.h
         platform/linux/notifications_manager_linux.cpp
     )
 
@@ -1141,12 +1132,12 @@ if (LINUX AND DESKTOP_APP_DISABLE_DBUS_INTEGRATION)
     )
 endif()
 
-if (LINUX AND DESKTOP_APP_DISABLE_WAYLAND_INTEGRATION)
+if (DESKTOP_APP_DISABLE_WAYLAND_INTEGRATION)
     remove_target_sources(Telegram ${src_loc} platform/linux/linux_wayland_integration.cpp)
     nice_target_sources(Telegram ${src_loc} PRIVATE platform/linux/linux_wayland_integration_dummy.cpp)
 endif()
 
-if (LINUX AND TDESKTOP_DISABLE_GTK_INTEGRATION)
+if (DESKTOP_APP_DISABLE_GTK_INTEGRATION)
     remove_target_sources(Telegram ${src_loc}
         platform/linux/linux_gdk_helper.cpp
         platform/linux/linux_gdk_helper.h
@@ -1154,10 +1145,8 @@ if (LINUX AND TDESKTOP_DISABLE_GTK_INTEGRATION)
         platform/linux/linux_gtk_file_dialog.h
         platform/linux/linux_gtk_integration_p.h
         platform/linux/linux_gtk_integration.cpp
-        platform/linux/linux_open_with_dialog.cpp
-        platform/linux/linux_open_with_dialog.h
-        platform/linux/linux_xlib_helper.cpp
-        platform/linux/linux_xlib_helper.h
+        platform/linux/linux_gtk_open_with_dialog.cpp
+        platform/linux/linux_gtk_open_with_dialog.h
     )
 
     nice_target_sources(Telegram ${src_loc}

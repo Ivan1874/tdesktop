@@ -96,6 +96,7 @@ public:
 		| MTPDchannel::Flag::f_scam
 		| MTPDchannel::Flag::f_fake
 		| MTPDchannel::Flag::f_megagroup
+		| MTPDchannel::Flag::f_gigagroup
 		| MTPDchannel::Flag::f_restricted
 		| MTPDchannel::Flag::f_signatures
 		| MTPDchannel::Flag::f_username
@@ -208,7 +209,10 @@ public:
 		return flags() & MTPDchannel::Flag::f_fake;
 	}
 
-	static MTPChatBannedRights KickedRestrictedRights();
+	static MTPChatBannedRights EmptyRestrictedRights(
+		not_null<PeerData*> participant);
+	static MTPChatBannedRights KickedRestrictedRights(
+		not_null<PeerData*> participant);
 	static constexpr auto kRestrictUntilForever = TimeId(INT_MAX);
 	[[nodiscard]] static bool IsRestrictedForever(TimeId until) {
 		return !until || (until == kRestrictUntilForever);
@@ -219,7 +223,7 @@ public:
 		const MTPChatAdminRights &newRights,
 		const QString &rank);
 	void applyEditBanned(
-		not_null<UserData*> user,
+		not_null<PeerData*> participant,
 		const MTPChatBannedRights &oldRights,
 		const MTPChatBannedRights &newRights);
 
@@ -232,6 +236,9 @@ public:
 	}
 	[[nodiscard]] bool isBroadcast() const {
 		return flags() & MTPDchannel::Flag::f_broadcast;
+	}
+	[[nodiscard]] bool isGigagroup() const {
+		return flags() & MTPDchannel::Flag::f_gigagroup;
 	}
 	[[nodiscard]] bool hasUsername() const {
 		return flags() & MTPDchannel::Flag::f_username;
@@ -306,7 +313,8 @@ public:
 	[[nodiscard]] bool canEditStickers() const;
 	[[nodiscard]] bool canDelete() const;
 	[[nodiscard]] bool canEditAdmin(not_null<UserData*> user) const;
-	[[nodiscard]] bool canRestrictUser(not_null<UserData*> user) const;
+	[[nodiscard]] bool canRestrictParticipant(
+		not_null<PeerData*> participant) const;
 
 	void setInviteLink(const QString &newInviteLink);
 	[[nodiscard]] QString inviteLink() const {
@@ -406,6 +414,8 @@ public:
 	void migrateCall(std::unique_ptr<Data::GroupCall> call);
 	void setGroupCall(const MTPInputGroupCall &call);
 	void clearGroupCall();
+	void setGroupCallDefaultJoinAs(PeerId peerId);
+	[[nodiscard]] PeerId groupCallDefaultJoinAs() const;
 
 	// Still public data members.
 	uint64 access = 0;
@@ -454,6 +464,7 @@ private:
 	std::optional<ChannelData*> _linkedChat;
 
 	std::unique_ptr<Data::GroupCall> _call;
+	PeerId _callDefaultJoinAs = 0;
 
 	int _slowmodeSeconds = 0;
 	TimeId _slowmodeLastMessage = 0;

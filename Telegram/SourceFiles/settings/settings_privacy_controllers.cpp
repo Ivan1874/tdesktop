@@ -167,7 +167,8 @@ AdminLog::OwnedItem GenerateForwardedItem(
 		MTPstring(), // post_author
 		MTPlong(), // grouped_id
 		//MTPMessageReactions(),
-		MTPVector<MTPRestrictionReason>()
+		MTPVector<MTPRestrictionReason>(),
+		MTPint() // ttl_period
 	).match([&](const MTPDmessage &data) {
 		return history->makeMessage(
 			data,
@@ -245,7 +246,7 @@ void BlockedBoxController::loadMoreRows() {
 		} break;
 		default: Unexpected("Bad type() in MTPcontacts_GetBlocked() result.");
 		}
-	}).fail([this](const RPCError &error) {
+	}).fail([this](const MTP::Error &error) {
 		_loadRequestId = 0;
 	}).send();
 }

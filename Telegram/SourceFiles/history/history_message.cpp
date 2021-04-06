@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_message.h"
 
 #include "base/openssl_help.h"
+#include "base/unixtime.h"
 #include "lang/lang_keys.h"
 #include "mainwidget.h"
 #include "mainwindow.h"
@@ -329,7 +330,7 @@ void FastShareMessage(not_null<HistoryItem*> item) {
 						Ui::hideLayer();
 					}
 					finish();
-				}).fail([=](const RPCError &error) {
+				}).fail([=](const MTP::Error &error) {
 					finish();
 				}).afterRequest(history->sendRequestId).send();
 				return history->sendRequestId;
@@ -349,11 +350,12 @@ void FastShareMessage(not_null<HistoryItem*> item) {
 	auto copyLinkCallback = canCopyLink
 		? Fn<void()>(std::move(copyCallback))
 		: Fn<void()>();
-	Ui::show(Box<ShareBox>(
-		App::wnd()->sessionController(),
-		std::move(copyLinkCallback),
-		std::move(submitCallback),
-		std::move(filterCallback)));
+	Ui::show(Box<ShareBox>(ShareBox::Descriptor{
+		.session = session,
+		.copyCallback = std::move(copyLinkCallback),
+		.submitCallback = std::move(submitCallback),
+		.filterCallback = std::move(filterCallback),
+		.navigation = App::wnd()->sessionController() }));
 }
 
 Fn<void(ChannelData*, MsgId)> HistoryDependentItemCallback(
@@ -523,6 +525,8 @@ HistoryMessage::HistoryMessage(
 		setGroupId(
 			MessageGroupId::FromRaw(history->peer->id, groupedId->v));
 	}
+
+	applyTTL(data);
 }
 
 HistoryMessage::HistoryMessage(
@@ -559,6 +563,8 @@ HistoryMessage::HistoryMessage(
 	}, [](const auto &) {
 		Unexpected("Service message action type in HistoryMessage.");
 	});
+
+	applyTTL(data);
 }
 
 HistoryMessage::HistoryMessage(
@@ -967,6 +973,29 @@ bool HistoryMessage::updateDependencyItem() {
 	return true;
 }
 
+void HistoryMessage::applySentMessage(const MTPDmessage &data) {
+	HistoryItem::applySentMessage(data);
+
+	if (const auto period = data.vttl_period(); period && period->v > 0) {
+		applyTTL(data.vdate().v + period->v);
+	} else {
+		applyTTL(0);
+	}
+}
+
+void HistoryMessage::applySentMessage(
+		const QString &text,
+		const MTPDupdateShortSentMessage &data,
+		bool wasAlready) {
+	HistoryItem::applySentMessage(text, data, wasAlready);
+
+	if (const auto period = data.vttl_period(); period && period->v > 0) {
+		applyTTL(data.vdate().v + period->v);
+	} else {
+		applyTTL(0);
+	}
+}
+
 bool HistoryMessage::allowsForward() const {
 	if (id < 0 || !isHistoryEntry()) {
 		return false;
@@ -1017,6 +1046,9 @@ void HistoryMessage::createComponents(const CreateConfig &config) {
 		if (savedFrom && savedFrom->isChannel()) {
 			mask |= HistoryMessageSigned::Bit();
 		}
+	} else if ((_history->peer->isSelf() || _history->peer->isRepliesChat())
+		&& !config.authorOriginal.isEmpty()) {
+		mask |= HistoryMessageSigned::Bit();
 	}
 	if (config.editDate != TimeId(0)) {
 		mask |= HistoryMessageEdited::Bit();
@@ -1352,17 +1384,26 @@ void HistoryMessage::applyEdition(const MTPDmessage &message) {
 		clearReplies();
 	}
 
+	if (const auto period = message.vttl_period(); period && period->v > 0) {
+		applyTTL(message.vdate().v + period->v);
+	} else {
+		applyTTL(0);
+	}
+
 	finishEdition(keyboardTop);
 }
 
 void HistoryMessage::applyEdition(const MTPDmessageService &message) {
 	if (message.vaction().type() == mtpc_messageActionHistoryClear) {
+		const auto wasGrouped = history()->owner().groups().isGrouped(this);
 		setReplyMarkup(nullptr);
 		refreshMedia(nullptr);
 		setEmptyText();
 		setViewsCount(-1);
 		setForwardsCount(-1);
-
+		if (wasGrouped) {
+			history()->owner().groups().unregisterMessage(this);
+		}
 		finishEditionToEmpty();
 	}
 }
@@ -1458,7 +1499,10 @@ TextWithEntities HistoryMessage::withLocalEntities(
 		const auto document = reply->replyToDocumentId
 			? history()->owner().document(reply->replyToDocumentId).get()
 			: nullptr;
-		if (document && (document->isVideoFile() || document->isSong())) {
+		if (document
+			&& (document->isVideoFile()
+				|| document->isSong()
+				|| document->isVoiceMessage())) {
 			using namespace HistoryView;
 			const auto duration = document->getDuration();
 			const auto base = (duration > 0)

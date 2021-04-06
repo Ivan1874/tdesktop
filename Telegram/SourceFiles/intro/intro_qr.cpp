@@ -32,24 +32,6 @@ namespace Intro {
 namespace details {
 namespace {
 
-[[nodiscard]] QImage TelegramLogoImage() {
-	const auto size = QSize(st::introQrCenterSize, st::introQrCenterSize);
-	auto result = QImage(
-		size * style::DevicePixelRatio(),
-		QImage::Format_ARGB32_Premultiplied);
-	result.fill(Qt::transparent);
-	result.setDevicePixelRatio(style::DevicePixelRatio());
-	{
-		auto p = QPainter(&result);
-		auto hq = PainterHighQualityEnabler(p);
-		p.setBrush(st::activeButtonBg);
-		p.setPen(Qt::NoPen);
-		p.drawEllipse(QRect(QPoint(), size));
-		st::introQrPlane.paintInCenter(p, QRect(QPoint(), size));
-	}
-	return result;
-}
-
 [[nodiscard]] QImage TelegramQrExact(const Qr::Data &data, int pixel) {
 	return Qr::Generate(data, pixel, st::windowFg->c);
 }
@@ -316,7 +298,7 @@ void QrWidget::refreshCode() {
 		MTP_vector<MTPint>(0)
 	)).done([=](const MTPauth_LoginToken &result) {
 		handleTokenResult(result);
-	}).fail([=](const RPCError &error) {
+	}).fail([=](const MTP::Error &error) {
 		showTokenError(error);
 	}).send();
 }
@@ -339,7 +321,7 @@ void QrWidget::handleTokenResult(const MTPauth_LoginToken &result) {
 	});
 }
 
-void QrWidget::showTokenError(const RPCError &error) {
+void QrWidget::showTokenError(const MTP::Error &error) {
 	_requestId = 0;
 	if (error.type() == qstr("SESSION_PASSWORD_NEEDED")) {
 		sendCheckPasswordRequest();
@@ -363,7 +345,7 @@ void QrWidget::importTo(MTP::DcId dcId, const QByteArray &token) {
 		MTP_bytes(token)
 	)).done([=](const MTPauth_LoginToken &result) {
 		handleTokenResult(result);
-	}).fail([=](const RPCError &error) {
+	}).fail([=](const MTP::Error &error) {
 		showTokenError(error);
 	}).toDC(dcId).send();
 }
@@ -409,7 +391,7 @@ void QrWidget::sendCheckPasswordRequest() {
 			getData()->pwdNotEmptyPassport = data.is_has_secure_values();
 			goReplace<PasswordCheckWidget>(Animate::Forward);
 		});
-	}).fail([=](const RPCError &error) {
+	}).fail([=](const MTP::Error &error) {
 		showTokenError(error);
 	}).send();
 }
@@ -428,6 +410,24 @@ void QrWidget::finished() {
 
 void QrWidget::cancelled() {
 	api().request(base::take(_requestId)).cancel();
+}
+
+QImage TelegramLogoImage() {
+	const auto size = QSize(st::introQrCenterSize, st::introQrCenterSize);
+	auto result = QImage(
+		size * style::DevicePixelRatio(),
+		QImage::Format_ARGB32_Premultiplied);
+	result.fill(Qt::transparent);
+	result.setDevicePixelRatio(style::DevicePixelRatio());
+	{
+		auto p = QPainter(&result);
+		auto hq = PainterHighQualityEnabler(p);
+		p.setBrush(st::activeButtonBg);
+		p.setPen(Qt::NoPen);
+		p.drawEllipse(QRect(QPoint(), size));
+		st::introQrPlane.paintInCenter(p, QRect(QPoint(), size));
+	}
+	return result;
 }
 
 } // namespace details

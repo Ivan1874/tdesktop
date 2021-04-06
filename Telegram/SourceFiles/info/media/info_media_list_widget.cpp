@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "window/window_peer_menu.h"
 #include "ui/widgets/popup_menu.h"
+#include "ui/controls/delete_message_context_action.h"
 #include "ui/ui_utility.h"
 #include "ui/inactive_press.h"
 #include "lang/lang_keys.h"
@@ -723,9 +724,9 @@ auto ListWidget::collectSelectedItems() const -> SelectedItems {
 
 MessageIdsList ListWidget::collectSelectedIds() const {
 	const auto selected = collectSelectedItems();
-	return ranges::view::all(
+	return ranges::views::all(
 		selected.list
-	) | ranges::view::transform([](const SelectedItem &item) {
+	) | ranges::views::transform([](const SelectedItem &item) {
 		return item.msgId;
 	}) | ranges::to_vector;
 }
@@ -1414,11 +1415,11 @@ void ListWidget::showContextMenu(
 					}));
 			}
 			if (item->canDelete()) {
-				_contextMenu->addAction(
-					tr::lng_context_delete_msg(tr::now),
-					crl::guard(this, [this, universalId] {
-						deleteItem(universalId);
-					}));
+				_contextMenu->addAction(Ui::DeleteMessageContextAction(
+					_contextMenu->menu(),
+					[=] { deleteItem(universalId); },
+					item->ttlDestroyAt(),
+					[=] { _contextMenu = nullptr; }));
 			}
 		}
 		_contextMenu->addAction(
@@ -2003,7 +2004,7 @@ void ListWidget::performDrag() {
 	}
 
 	TextWithEntities sel;
-	QList<QUrl> urls;
+	//QList<QUrl> urls;
 	if (uponSelected) {
 //		sel = getSelectedText();
 	} else if (pressedHandler) {

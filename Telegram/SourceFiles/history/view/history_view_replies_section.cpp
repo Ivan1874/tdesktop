@@ -626,19 +626,14 @@ bool RepliesWidget::confirmSendingFiles(
 		return false;
 	}
 
-	//const auto cursor = _field->textCursor();
-	//const auto position = cursor.position();
-	//const auto anchor = cursor.anchor();
-	const auto text = _composeControls->getTextWithAppliedMarkdown();//_field->getTextWithTags();
 	using SendLimit = SendFilesBox::SendLimit;
 	auto box = Box<SendFilesBox>(
 		controller(),
 		std::move(list),
-		text,
+		_composeControls->getTextWithAppliedMarkdown(),
 		_history->peer->slowmodeApplied() ? SendLimit::One : SendLimit::Many,
 		Api::SendType::Normal,
 		SendMenu::Type::SilentOnly); // #TODO replies schedule
-	_composeControls->setText({});
 
 	const auto replyTo = replyToId();
 	box->setConfirmedCallback(crl::guard(this, [=](
@@ -654,18 +649,8 @@ bool RepliesWidget::confirmSendingFiles(
 			options,
 			ctrlShiftEnter);
 	}));
-	box->setCancelledCallback(crl::guard(this, [=] {
-		_composeControls->setText(text);
-		//auto cursor = _field->textCursor();
-		//cursor.setPosition(anchor);
-		//if (position != anchor) {
-		//	cursor.setPosition(position, QTextCursor::KeepAnchor);
-		//}
-		//_field->setTextCursor(cursor);
-		//if (!insertTextOnCancel.isEmpty()) {
-		//	_field->textCursor().insertText(insertTextOnCancel);
-		//}
-	}));
+	box->setCancelledCallback(_composeControls->restoreTextCallback(
+		insertTextOnCancel));
 
 	//ActivateWindow(controller());
 	const auto shown = Ui::show(std::move(box));
@@ -982,7 +967,7 @@ void RepliesWidget::edit(
 		}
 	};
 
-	const auto fail = [=](const RPCError &error, mtpRequestId requestId) {
+	const auto fail = [=](const MTP::Error &error, mtpRequestId requestId) {
 		if (requestId == *saveEditMsgRequestId) {
 			*saveEditMsgRequestId = 0;
 		}
@@ -1721,7 +1706,7 @@ void RepliesWidget::readTill(not_null<HistoryItem*> item) {
 }
 
 void RepliesWidget::listVisibleItemsChanged(HistoryItemsList &&items) {
-	const auto reversed = ranges::view::reverse(items);
+	const auto reversed = ranges::views::reverse(items);
 	const auto good = ranges::find_if(reversed, [](auto item) {
 		return IsServerMsgId(item->id);
 	});
